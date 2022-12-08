@@ -1,0 +1,115 @@
+---
+title: "DCBIKES"
+author: Rosalina Delwiche
+output: html_notebook
+---
+The purpose of this analysis is to analyze user trends of dc bikeshare. Three aspects are considered - location, number of bike riders, and duration.
+## Loading Packages
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggplot2)
+library(plotly)
+library(gapminder)
+library(lubridate)
+library(readxl)
+library(skimr)
+```
+
+## Setting the theme 
+The theme is set to theme_minimal for minimalist theme with no background annotations
+```{r}
+theme_set(theme_minimal())
+```
+
+
+## Reading in DC Bike Data
+The DC Bike data is downloaded from https://s3.amazonaws.com/capitalbikeshare-data/index.html for 2022
+```{r}
+df1 <- read_csv(here("data_raw", "bike.zip")) %>% clean_names()
+```
+
+## Dataset Mutation to breakdown start and end
+First, we create a dataset with the end locations data only with the longtitude and latitude, then adding column with start 
+```{r}
+end <- select(df1, -start_lng, -start_lat) %>% mutate(trip = "end")
+
+colnames(end)[9] <- "lat"
+colnames(end)[10] <- "lng"
+```
+
+Then, we create a dataset with the start locations data only with the longtitude and latitude, then adding column with end
+```{r}
+start <- select(df1, -end_lng, -end_lat) %>% mutate(trip = "start")
+colnames(start)[9] <- "lat"
+colnames(start)[10] <- "lng"
+```
+
+Lastly, we merge the start and end dataset together, then filtering invalid lat and long
+```{r}
+start_end = rbind(end,start)
+start_end <- na.omit(start_end) %>% filter(lat != 0, lng != 0)
+```
+
+
+## Plotting the spread of bikeriders
+The longitude and latitude of biker riders was plotted. This is shown by group with one group being start and the other being end. The dataset start_end is used to plot this, which we created in the previous step. The alpha value is set low so we can see a concentration of bike riders towards the center. 
+```{r}
+ggplot(start_end, mapping = aes(x = lng, y = lat, color = trip)) + 
+  geom_point(alpha = 1/10) + 
+  ggtitle("Bike Rider")
+```
+
+
+
+## Dataset Mutation to include started at hour 
+In the proceeding parts, we need to extract some data. We create dataset df2 to incorporate a column with the hour started at. 
+```{r}
+df2 <- df1 %>% mutate(rounded_date = round_date(started_at,"hour"))
+
+df2 <- df2 %>% mutate(day = date(rounded_date)) %>% mutate(hour=hour(rounded_date))
+```
+
+Next, we create dataset df3 counting the number of riders by day and hour
+```{r}
+df3 <- df2 %>% count(day,hour) %>% mutate(day_hour = paste(day, hour, sep = " "))
+colnames(df3)[3] ="riders"
+```
+
+## Plotting bike riders per hour
+We plot number of bike riders per hour with x being hour y being number of riders. Graph per day in September. As we can see, there is a common pattern seen. For the most part, the graphs look bimodal with two peaks. This is illustrated on many days in September such as September 1, 7, 8, 13, 14, 15, 20... This peaks usually occur around 9 am and 5 pm. 
+```{r}
+
+ggplot(data=df3, aes(x=hour, y=riders)) +
+  facet_wrap(~day) + 
+  xlab("Hour") + 
+  ylab("Number of Riders") + 
+  ggtitle("September Bike Riders per hour") + 
+  geom_line()
+
+```
+
+## Dataset mutation for duration
+
+Next, we create a column with the duration in minutes using ended_at and started_at. This is in dataset df4.
+```{r}
+df4 <- df1 %>% mutate(duration = ((ended_at)-(started_at))/60)
+```
+
+In addition to adding duration, we extract the hour of the day the ride was started at and day of week. This is done for each row in df4.
+```{r}
+df4 <- df4 %>% mutate(hour_of_day = hour((started_at)),
+                      day_of_week = wday((started_at), label = T))
+```
+
+## Plotting bike rider per day of week 
+We plot the duration of bikeriders per day of with duration less than 100 minutes. This is facet wrapped by day of week from sunday to mondy.
+```{r}
+df4 %>% filter(duration<100,duration>0) %>% 
+  ggplot( aes(x=duration)) +
+  geom_histogram(bins = 300) + 
+  facet_wrap(~day_of_week)
+```
+## Summary
+Bike riders per hour is shown as a faceted plot. Although the number of bike riders typically vary hour to hour and day to day, there are some trends we can see. There are more bike riders at 9 am and 5 pm. Perhaps this is because people going to work. Additionally, the last plot provides insight to the longevity of bike rides. The duration of bike riders is unimodal and right skewed. In relation to the model, this means that a bike ride of 10 minutes is more likely to occur and anything 50 minutes or longer in duration is not. In order to explore this further, we can look at the working population within DC. 

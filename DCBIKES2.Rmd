@@ -1,0 +1,176 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+The purpose of this analysis is to analyze user trends of dc bikeshare. This portion of analysis considers duration of bike rides started per hour. This is broken down into two subcategories - member and casual. 
+
+## Loading Packages
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggplot2)
+library(plotly)
+library(gapminder)
+library(lubridate)
+library(readxl)
+library(skimr)
+library(ggridges)
+library(viridis)
+library(hrbrthemes)
+```
+
+## Setting the theme to theme_minimal
+
+The theme is set for a minimalist theme with no background annotations
+```{r}
+theme_set(theme_minimal())
+```
+
+## Loading data
+
+The bike data is downloaded from https://s3.amazonaws.com/capitalbikeshare-data/index.html for September 2022. This dataset includes information regarding dc bike rentals. Each row represents a bike rented out. The variables we will use are start location, end location, and member type. Location is given by lattitude and longitude. We further clean the dataset.
+```{r}
+b1 = read_csv(here("data_raw", "bike.zip")) %>% clean_names()
+```
+
+## Mutating Dataset
+
+We create a variable for the duration of bike ride by computing the difference between the end time and start time. This is computed in minutes. Then, we extract the hour the bike rental started at. Lastly, we create a variable for the day of week the bike ride was started. The names of these variables are duration, hour_of_day and day_of_week respectively.
+```{r}
+b2 = b1 %>% mutate(duration=difftime((ended_at),(started_at),units = "mins"),hour_of_day = hour(started_at), day_of_week = wday(started_at), label = T)
+```
+
+
+## Plotting Duration Distribution
+
+We plot bike-riders per day of week with duration less than 100 minutes. This is facet wrapped by day of week. As we can see, there is a larger concentration of bike rides less than 25 minutes. It is less common to have a longer bike ride. This can be said for every day of the week. 
+```{r}
+b2 %>%  
+  filter(duration < 100, duration >0)  %>% 
+  ggplot(aes(x=duration)) + geom_histogram(bins = 300) + facet_wrap(~day_of_week)
+```
+
+## Cleaning the Dataset
+To examine the validity of the data, we check whether there are negative or zero minute durations. We do this by creating a separate dataset, b3_negative to examine. This is done by applying filter to the duration variable with less than or equal to 0 logic. 
+
+Once created, we can view the dataset. As we can see, there are 31 bike rides that were 0 minutes or less. These 31 entries have the possibility of negatively impacting our results.  These values can be removed as a duration of less than zero is impossible and a duration of 0 minutes does not indicate a bike ride. 
+```{r}
+b3_negative = b2 %>% filter(duration <= 0)
+view(b3_negative)
+```
+
+We remove the durations less than or equal to 0 and store in the dataset b3.
+```{r}
+b3 = b2 %>% filter(duration > 0)
+```
+
+## Plotting Trip Duration
+The question proposed is how do trip duration and start time relate? To analyze, we plot the trip duration vs start time for Septemeber 3 using the time the bike ride started and the duration. Setting the alpha level to .1 allows us to see larger concentrations. 
+
+There is a large congregation of bike rides from Septemeber 3 at 7 am to September 3 at 8 pm. Most of these bike rides are less than 20 minutes. While this is the most congregated region, the data is spread throughout, especially during the day time. The night time around midnight on September has the fewest trips and the duration is not as clear. Further analysis is required. 
+
+```{r}
+b3 %>% filter(mday((started_at)) == 3, duration < 60) %>% 
+  ggplot(aes(x=started_at, y = duration))+
+  geom_point(alpha=.1)+
+  ggtitle("Trip duration vs start time for Septemeber 3") + xlab("Time Started at September DD HH:HH")
+```
+
+
+## Mutating Dataset
+
+In the previous analysis we observed duration of bike rides is typically ranges from 0 to 60 minutes. Thus, to support our continuing analysis, we create a dataset for September 3 only with duration less than 60 minutes and adding duration variable 
+```{r}
+b4 = b3 %>% 
+  filter(mday((started_at)) == 3, duration < 60) %>% slice_sample(n=100)
+
+b2 <- 
+  b1 %>% mutate(started_at = (started_at)) %>% 
+  mutate(ended_at = (ended_at)) %>% mutate(start_day = mday(started_at)) %>% 
+  mutate(duration = ((ended_at - started_at)/60)) %>% filter(duration < 60)
+```
+
+
+## Visualizing Number of Riders
+
+We show the number of riders dependent on time taking into account the start and end 
+```{r}
+b2temp=b2 %>% filter(mday(started_at) ==3) %>% 
+  select(start=started_at, end=ended_at)  %>% 
+  pivot_longer(start:end, names_to = "type", values_to = "t") %>% arrange(t) %>% 
+  mutate(increment = case_when(
+      type == "start" ~1,
+      type == "end" ~ -1)) %>% mutate(riders = cumsum(increment)) 
+
+b2temp %>%ggplot(aes(t,riders)) + geom_step()  + ggtitle("Number of Riders")
+```
+
+## Duration of Bike Riders for Hour Refining
+
+### Dataset Creation
+
+First, we create a new dataset based on the original with added in fields - start hour, duration and the day of the month. We filter out the day of the month to be September 3. 
+```{r}
+b6 <- b1 %>% 
+  mutate(start_hour = hour(started_at), duration = ((ended_at-started_at)/60), month_day = mday(started_at))%>% 
+  filter(month_day == 3)
+```
+
+### Visualization 1
+
+Using the newly create dataset, we create our first boxplot faceted by member type. Each facet is the hour of the day on September 3. 
+```{r}
+# color = member_casual faceted
+ggplot(b6, aes(y = as.factor(start_hour), x = duration, fill = member_casual)) +
+  geom_boxplot() + 
+  xlim(0,60) +
+  ylab("Start Hour") +
+  xlab("Duration (Minutes)") + 
+  ggtitle("Boxplots for Duration of Bike Rides for Hour Started on September 3 with Member Type")+ geom_boxplot(alpha=0.3) +
+    theme(legend.position="none") +
+    scale_fill_brewer(palette="Spectral") + 
+  facet_wrap(~start_hour,  scale="free") + theme(plot.title = element_text(hjust = 0.5), strip.text = element_text(face="bold"))
++ theme(legend.position = "bottom")
+```
+
+### Visualization 2
+
+We create visual for box plot for the duration of bike rides for hour started on September 3 overall
+```{r}
+# not faceted or grouped, just overall 
+ggplot(b6, aes(y = as.factor(start_hour), x = duration)) + 
+  geom_boxplot() + 
+  xlim(0,60) + 
+  ylab("Start Hour") +
+  xlab("Duration (Minutes)") + 
+  ggtitle("Boxplots for Duration of Bike Rides for Hour Started on September 3")+ 
+  geom_boxplot(alpha=0.3) +
+    theme(legend.position="none") +
+    scale_fill_brewer(palette="Spectral") + 
+  theme(plot.title = element_text(hjust = 0.5), strip.text = element_text(face="bold"))
+```
+
+
+## Visualization 3
+
+The first two visualizations provide insights. 
+The second visualization shows boxplots per hour from 11 pm to 12 am. The boxplot offers insights through five summary statistics such as min, lower quartile, median, upper quartile, and max. Additionally, many outliers are shown. 
+
+The first visualization shows that there may be a difference between how the member type affects duration. However, it is hard to compare the hours with ease. Thus we create visualization 3 which is  a boxplot for the duration of bike rides for hour started on September 3 with type of member as casual or member. This visualization is unfaceted.
+
+```{r}
+# not faceted, just overall but grouped by member_casual 
+ggplot(b6, aes(y = reorder(as.factor(start_hour), desc(as.factor(start_hour))), x = duration, fill = member_casual)) + 
+  geom_boxplot() + 
+  xlim(0,60) + # duration 0 to 60 minutes
+  ylab("Start Hour") +
+  xlab("Duration (Minutes)") +
+  ggtitle("Boxplots for Duration of Bike Rides for Hour Started on 9/3 with Member Type")+ geom_boxplot(alpha=0.3) +
+    theme(legend.position="none") +
+    scale_fill_brewer(palette="Spectral") +
+  theme(plot.title = element_text(hjust = 0.5), strip.text = element_text(face="bold")) + 
+  theme(plot.title = element_text(hjust = 0.5), strip.text = element_text(face="bold"))+ theme(legend.position = "bottom")
+```
+### Conclusion 
+The five summary statistics of bike duration vary hour to hour, and by member type. On September 3, during a 24 hour observation, rideshare members spent less time riding than casual members. Thus, the member type matters in our observation. Further, at 12 am, 1 am, 2 am, the durations were the least. Durations go up towards mid-day and evening. 

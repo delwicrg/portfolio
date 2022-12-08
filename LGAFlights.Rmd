@@ -1,0 +1,107 @@
+---
+title: "LGA Flight Analysis"
+author: Rosalina Delwiche
+date: "28 September 2022"
+output: html_document
+---
+The purpose of this analysis is to analyze flight data trends for LaGuardia Airport for Delta Airlines. The proposed question is there any noticable trends in flights for delta?
+
+## Loading Packages
+```{r}
+library(here)
+library(tidyverse)
+library(janitor)
+library(ggplot2)
+library(ggridges)
+library(ggridges)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+```
+
+## Loading Flight Data per year
+We load data from years 2017-2022 and filter out (Origin = LGA ) and (Carrier = Delta). We start with 2017 data into df2017.
+```{r}
+df2017<-read_csv(here("data_raw","DL_SelectFields_2017.zip")) %>% 
+  clean_names() %>% 
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+We load 2018 data into df2018.
+```{r}
+df2018<-read_csv(here("data_raw","airline_data_2018.zip")) %>%
+  clean_names() %>% 
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+We load 2019 data into df2019.
+```{r}
+df2019<-read_csv(here("data_raw","DL_SelectFields.zip")) %>% 
+  clean_names() %>% 
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+We load 2020 data into df2020
+```{r}
+df2020<-read_csv(here("data_raw","DL_SelectFields_2020.zip")) %>% 
+  clean_names()  %>%
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+We load 2021 data into df2021
+```{r}
+df2021<-read_csv(here("data_raw","airline_data_2021_1.zip")) %>% 
+  clean_names() %>% 
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+We load 2022 data into df2021
+```{r}
+df2022<-read_csv(here("data_raw","DL_SelectFields2022.zip")) %>% 
+  clean_names()  %>%
+  filter(passengers>0,origin=="LGA", unique_carrier_name == "Delta Air Lines Inc.") 
+```
+
+
+##  Combining Flight Data
+We bind the data for the last 6 years into a single dataset, df_all using rbind
+```{r}
+df_all = rbind(df2017,df2018, df2019,df2020,df2021, df2022)
+```
+
+
+## Analysis
+First, we make histograms for number of passengers per month coming from LGA for each year (2017, 2018, 2019, 2020, 2021, 2022). This is faceted by year.
+```{r}
+df_all %>% ggplot(aes(month)) + 
+  geom_bar(aes(weight=passengers)) + 
+  facet_wrap(~year) + 
+  ggtitle("Passengers per Month from 2017-2022") +
+  ylab("passenger count")
+```
+
+As we can see Delta Airlines has the highest number of passengers in 2019. However, going into 2020 the number of passengers drastically dropped to nearly 0 in March 2020. The number of passengers stays low compared to other years for the rest of 2020. Slowly over time from March 2020 to midway into 2022, the number of passengers overall increases. To get a better perspective of year to year, we create a new graph. 
+
+
+## New Analysis
+To start, we create a summary dataset by year, month, and number of passengers, leaving out 2022. We leave 2022 as there is not data past june. 
+```{r}
+df_all_summary <- df_all %>%
+  filter(year %in% c(2017, 2018, 2019, 2020, 2021)) %>%
+  count(wt = passengers, year, month)
+
+#re-naming summary statistic from n to total passengers
+colnames(df_all_summary)[3] ="total_passengers"
+```
+
+Next, we create  a stacked histogram of the total passengers per month. We fill this by year.
+```{r}
+ggplot(df_all_summary, aes(fill=as.character(year), y=total_passengers, x=month)) + 
+  geom_bar(position="stack", stat="identity")+theme_ipsum() +
+  scale_fill_viridis(discrete=TRUE, name="") +
+  ggtitle("Total Passengers Per Month") + 
+  ylab("Number of Passengers") +
+  guides(fill=guide_legend(title="Year"))
+```
+
+The above stacked histogram supports the previous plot while providing new insights. Firstly, we gain a year by year comparison with visual distinction. From this we can gather that from 2017 to 2019 Delta Airlines was gaining passengers. However, after 2019, a steep decline was seen and Delta Airlines has still not recovered from the previous years. Lastly, from 2017-2021 overall December had the most passengers, followed by June and July.

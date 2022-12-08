@@ -1,0 +1,209 @@
+---
+title: "MA131/MA132 Analysis"
+author: "Rosalina Delwiche"
+date: "September 2022"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+The purpose of this analysis is to predict the enrollment of Calculus 2 (MA132) at Clarkson University during the Spring 2022 Semester
+
+## Loading Packages
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+```
+
+## Reading Data
+Reads all math enrollment data from Clarkson University for the last 5 years
+Skips line 1 because it does not have data
+```{r}
+ma131ma132 <- read_csv(here("data_raw", "CU_ACAD_DEPT_WHEN_OFF_ENRL_22740.csv"), skip = 1)
+```
+
+
+## Extracting Data
+
+Filtering data to only contain MA131 and MA132 Classes
+Creating columns for year, term, and term2 
+```{r}
+ma131ma132 <- ma131ma132 %>% 
+  clean_names()  %>% 
+  filter( xor(course_id == "8732", course_id == "8733")) %>% 
+  filter(component == "LEC") %>%
+  mutate(semester_term = vapply(strsplit(term2," "), `[`, 1, FUN.VALUE=character(1))) %>%
+  mutate(semester_year = vapply(strsplit(term2," "), `[`, 2, FUN.VALUE=character(1))) %>% 
+  mutate (year_term = paste(semester_year, semester_term, sep = " "))
+```
+
+Creating summary data set for only ma131 fall and ma132 spring lectures
+```{r}
+# summary data, only for ma131 fall and ma132 spring
+ma131fma132s_summary = ma131ma132 %>% group_by(term2, course_id, term) %>% 
+  summarize(all_enrl = sum(tot_enrl)) %>% 
+  ungroup() %>% mutate(semester_term = vapply(strsplit(term2," "), `[`, 1, FUN.VALUE=character(1))) %>%
+  mutate(semester_year = vapply(strsplit(term2," "), `[`, 2, FUN.VALUE=character(1))) %>%
+  filter((semester_term == "Fall"& course_id == 8732) | (semester_term == "Spring" & course_id == 8733)) %>%
+  mutate(year_term = paste(semester_year, semester_term, sep = " ") )
+```
+
+## Visualizing 
+### Calculus 1 and Calculus 2 Facted
+First, we make a faceted bar plot for ma131 and ma132 for fall, spring, and summer. It produces a calculus 1 and calculus two histogram wrapped by year. The weight is the total enrollment, which is the sum of number of student enrolled across all sections for the specific year and semester combinations. It is sorted from oldest to newest, with MA132 spring 2022 left blank as no data is given. Our goal is to visually analyze the enrollment to come up with an approach to solve the problem of prediction. 
+
+```{r}
+ma131ma132 %>% ggplot(aes(year_term)) + 
+  geom_bar(aes(weight=tot_enrl)) + 
+  ggtitle("Calculus 1 and Calculus 2 Enrollment (Lecture Only)") + 
+  facet_wrap(~title) +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Semester") + 
+  ylab("Total Enrollment")
+
+```
+
+### Calculus 1 and Calculus 2 Side by Side
+
+Secondly, we create a side by side comparison of MA132 Fall (8732) followed by MA132 Spring (8733) using enrollment numbers. We add styling to differentiate the two courses and a label to indicate the year. This is done because while term indicates the semester, it is not easily understandble. 
+```{r}
+ggplot(ma131fma132s_summary,aes(x=term,y=all_enrl,fill=factor(course_id)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_fill_discrete(name="Course ID",breaks=c(1, 2),labels=c("MA131", "MA132")) + 
+  ggtitle("Fall MA131(8732) and Spring MA132(8733) LEC Enrollment")+ 
+  xlab("Term") + ylab("Enrollment") + guides(fill=guide_legend(title="Course ID")) +
+  scale_fill_manual(values=c("darkslateblue","deeppink4"))+ geom_text(aes(label = semester_year), nudge_y = 10)
+```
+
+### Summary
+The first figure shows a faceted bar plot of MA131 and MA132 separately. This is useful to determining the trend of enrollment specific to the class and throughout the semesters and years. It is clear that MA131 enrollment is the highest in the fall term and MA132 enrollment is the highest in the spring term per each academic year. 
+
+For predicting the enrollment of MA132 in Spring of 2022, it is crucial to understand the enrollment from MA131 in the fall to MA132 in the spring since it is assumed most students who complete MA131 in the fall continue on to MA132 in the spring. The second figure shows a side by side bar plot comparison of this. In all academic years, the enrollment of MA131 is greater than the enrollment of MA132. Thus, it is expected Spring 2022 MA132 enrollment will be less than 341 students. 
+
+
+## Prediction 
+### Reading in data
+Everydataset from df1 to df5 builds off the proceeding. First we read in the data into df1. Then, only calculus 1 and calculus 2 is extracted into df2. df3 contains only the lecture component, with discussion being excluded. 
+df4 contains the following fields
+  * course_id
+  * term
+  * term2
+  * total enrollment (tot_enrol)
+  * section
+df5 only contains the distinct values, getting rid of duplicates. Lastly, df6 builds off of df5 and adds academic year.
+```{r }
+# df1 contains math enrollment data
+df1 <- read_csv(here("data_raw", "CU_ACAD_DEPT_WHEN_OFF_ENRL_22740.csv"), skip = 1) %>% clean_names()
+
+# df2 only contains calculus 1 and calculus 2
+df2 <- df1 %>% filter(xor(course_id == 8732, course_id == 8733))
+
+# df3 only contains lecture component
+df3 <- df2 %>% filter(component == "LEC")
+
+# df4 only contains course_id, term, term2, tot_enrol, and section columns
+df4 <- df3 %>% select(course_id, term, term2, tot_enrl, section)
+
+# df5 only contains distinct values
+df5 <- df4 %>% distinct()
+
+df6 <- df5 %>% filter(str_detect(term2, "Spring") | str_detect(term2, "Fall")) %>% select(1:5) %>% mutate(ac_year = round((term-4000)/10))
+```
+
+### Visualizing MA132 Spring Enrollment
+We visualize MA132 Spring enrollment by creating a scatter plot. This is useful in understanding the overall trends of MA132 Enrollment from year to year. Excluding spring of 2022, we can see within the last 7 years, the range of enrollment is from approximately 340 to  460 students. Further, no obvious trend or correlation can be seen through just the MA132 Spring Enrollment numbers. 
+```{r }
+ma132_spring <- df6 %>% filter(str_detect(term2,"Spring"))
+
+ma132_spring <- ma132_spring %>% 
+  group_by(term2, course_id, term, ac_year) %>% 
+  summarize(all_enrl = sum(tot_enrl)) %>% filter(course_id == 8733)
+
+ma132_spring %>% ggplot(aes(x=ac_year, y=all_enrl)) + geom_point()+ggtitle("MA132 Enrollment")
+```
+### Preparing dataset further
+We further prepare the data set to group by enrollment semester, contain only sections 1, 01A, 01B, and summarize by those given fields. Since MA132 Spring 2022 has no data, we leave 2022 out of our prediction to not affect our predictions. 
+```{r}
+df_131f = df6 %>% 
+  filter(course_id==8732 & str_detect(term2, "Fall")) %>% 
+  group_by(ac_year) %>% 
+  summarize(ma131_fall=sum(tot_enrl))
+
+df_132s = df6 %>% 
+  filter(course_id==8733 & str_detect(term2, "Spring")) %>% 
+  group_by(ac_year) %>% 
+  summarize(ma132_spring=sum(tot_enrl)) %>% select(2)
+
+df_132fs1 = df6 %>% 
+  filter(course_id==8733 & str_detect(term2, "Fall"), section %in% c("1","01A","01B")) %>%
+  group_by(ac_year) %>% summarize(ma132_fall_section_1=sum(tot_enrl)) %>% 
+  select(2)
+
+df_132fs23 = df6 %>% 
+  filter(course_id==8733 & str_detect(term2, "Fall"), !(section %in% c("1","01A","01B"))) %>%
+  group_by(ac_year) %>% summarize(ma132_fall_other_sections=sum(tot_enrl)) %>% 
+  select(2)
+
+df7 = bind_cols(df_131f, df_132fs1, df_132fs23, df_132s, .name_repair = "unique")
+df8=df7[1:7,]
+```
+
+### Prediction 1
+Using df8, we create a linear regression model. The linear regression model takes into account MA131 section 1 fall enrollment, ma132 fall enrollment in sections other than section 1
+```{r}
+linear_regression <- lm(formula=ma132_spring~ma131_fall+ma132_fall_section_1+ma132_fall_other_sections+0,data=df8)
+```
+
+Below is a summary of the linear regression equation.
+```{r}
+summary(linear_regression)
+```
+
+Using the linear regression equation, we predict a value for MA132 Spring to the wholest number
+```{r}
+lm_prediction_ma132s <- data.frame(ac_year = c(22), predicted = c(ceiling(predict(linear_regression, df7[8,])) )) # prediction for MA132 Spring of 2022
+
+```
+
+We mutate the df9 dataset to include a prediction for all years for MA132 Spring
+```{r}
+df9 <- df8 %>% mutate(predicted = ceiling(predict(linear_regression))) #adding predictions to each year in data set
+```
+
+We plot the predicted and actual enrollment for each year given 
+```{r}
+# plotting the predicted and actual for each year given for MA132 Spring Enrollment
+df9 %>% ggplot() +
+  geom_point(data = df9, aes(x = ac_year, y = ma132_spring)) +
+  geom_point(data = df9, aes(x = ac_year, y = predicted), color = "grey") +
+  ggtitle("MA132 Actual Spring Enrollment vs. Predicted (grey)") + 
+  ylab("Number of Students") + 
+  xlab("Academic Year") +
+  geom_point(data=lm_prediction_ma132s, aes(x=ac_year, y = predicted), color = "grey")
+```
+
+
+### Prediction 2
+Using the same process as prediction 1, we create a new, simplified, linear regression model. This linear regression model only takes into account MA132 Fall Enrollment. Based off this, we predict a value for MA132 Spring 2022. Then, we create a dataset, df10 to contain predictions of other years. Lastly, we plot the expected vs. actual.  
+```{r}
+linear_regression_2 <- lm(formula=ma132_spring~ma131_fall,data=df8)
+
+summary(linear_regression_2)
+
+ceiling(predict(linear_regression_2,df7[8,]))
+
+lm_prediction_ma132s_2 <- data.frame(ac_year = c(22), predicted = c(ceiling(predict(linear_regression_2, df7[8,])) ))
+
+df10 <- df8 %>% mutate(predicted = ceiling(predict(linear_regression_2))) #adding predictions to each year in data set
+
+df10 %>% ggplot() +
+  geom_point(data = df10, aes(x = ac_year, y = ma132_spring)) +
+  geom_point(data = df10, aes(x = ac_year, y = predicted), color = "grey") + 
+  ggtitle("MA132 Actual Spring Enrollment vs. Predicted (grey) Considering MA131 F Enrollment Only") +
+  ylab("Number of Students") +
+  xlab("Academic Year") +
+  geom_point(data=lm_prediction_ma132s_2, aes(x=ac_year, y = predicted), color = "grey")
+```
+
+### Summary of predictions
+To predict MA132, two linear regressions were created. One with the formula as  formula=ma132_spring~ma131_fall+ma132_fall_section_1+ma132_fall_other_sections+0 and the other with the formula as formula=ma132_spring~ma131_fall. The first formula listed, add 0 for the intercept to be 0. This means when the class enrollment for ma131 fall, ma132 fall section 1 and ma132 fall other sections is 0, the expected ma132 enrollment should be 0. Two visualizations were created - one for each linear regression equation. In each, the actual data points are plotted as well as the predicted. Comparing the two visualizations, the first equation does better at predictions as the residuals is less than the other equation. Thus using that model, the predicted ma132 spring enrollemt is 366.
+
