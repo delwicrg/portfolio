@@ -2,9 +2,7 @@
 title: "MA131/MA132 Analysis"
 author: "Rosalina Delwiche"
 date: "September 2022"
-output:
-  pdf_document: default
-  html_notebook: default
+output: html_document
 ---
 The purpose of this analysis is to predict the enrollment of Calculus 2 (MA132) at Clarkson University during the Spring 2022 Semester
 

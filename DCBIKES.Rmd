@@ -1,9 +1,7 @@
 ---
 title: "DCBIKES"
 author: "Rosalina Delwiche"
-output:
-  html_document:
-    df_print: paged
+output: html_document
 ---
 The purpose of this analysis is to analyze user trends of dc bikeshare. Three aspects are considered - location, number of bike riders, and duration.
 ## Loading Packages

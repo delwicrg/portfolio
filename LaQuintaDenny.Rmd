@@ -13,21 +13,59 @@ library(here)
 library(janitor)
 library(ggplot2)
 library(dsbox)
+
+# the below is needed to install dsbox
+# install.packages("devtools")
+# devtools::install_github("rstudio-education/dsbox")
+
 ```
 
-#
+## Reading Data
+We first start by reading the fast food restauraunt data. This dataset includes locations of various fast food restauraunts such as McDonalds, Jimmy Johns, Wendy's. The associated address, website, city, country, and further locational data is given. This dataset is stored in df1. 
 ```{r}
-df1 <- read_csv(here("data", "FastFoodRestaurants.csv")) %>% clean_names()
-quinta <- laquinta
-states <- read_csv(here("data","states.csv")) %>% clean_names()
+df1 <- read_csv(here("data_raw", "FastFoodRestaurants.csv")) %>% clean_names()
 ```
 
+Next, we read in laquinta as quinta. This is an included dataset in the dsbox package.
+```{r}
+quinta <- laquinta
+```
+
+Lastly, we read in the state data. This gives the names of the states in the US, their abbreviations, and area. 
+```{r}
+states <- read_csv(here("data_raw","states.csv")) %>% clean_names()
+```
+
+## Refining Dataset
+We will be focusing on McDonalds in North Carolina. So, we use df1 and declare a new dataset mcdonalds_nc using filters.  
 ```{r}
 mcdonalds_nc <- df1 %>% filter(province=="NC" & name == "McDonald's")
-mcdonalds_nc_random <- mcdonalds_nc %>% slice_sample(n=28) %>% mutate(state=province, zip=postal_code) %>% select(1,2,11,12,6,5)
+```
+
+To make the sampling fair, we slice the sample by 28. Thus, only 28 McDonalds locations in NC will be used in analysis. This sample is randomly selected. Further, this sample is stored in mcdonalds_nc_random with the columns address, city, state, zip, longitude and latitude.   
+```{r}
+mcdonalds_nc_random <- 
+  mcdonalds_nc %>% slice_sample(n=28) %>% 
+  mutate(state=province, zip=postal_code) %>% 
+  select(1,2,11,12,6,5)
+```
+
+We then take quinta and filter the state NC to create a new dataset quinta_nc that only contains LaQuinta locations in North Carolina. 
+```{r}
 quinta_nc <- quinta %>% filter(state=="NC")
 ```
 
+
+## Haversine Function
+We create a function haversine that takes two pairs of longtitude and latitude. Using the input, it determines the distance between the two locations. 
+
+The key values used and used in computation are R, a, d.
+
+R is the radius of the sphere. In this case, this is the radius of the earth. This value is 6371 km. 
+
+d is the distance between the points
+
+The function returns the distance in km
 ```{r}
 haversine <- function(long1, lat1, long2, lat2, round = 3) {
   # convert to radians
@@ -42,12 +80,26 @@ haversine <- function(long1, lat1, long2, lat2, round = 3) {
 }
 ```
 
-
+## Incoporating haversine function for Dennys and LaQuintas 
+Once again, we extract the dennys and laquinta data for North Carolina
 ```{r}
 dn_nc <- dennys %>% filter(state == "NC")
 lq_nc <- laquinta %>% filter(state == "NC") 
+```
+
+Then, we join the dennys and laquinta data
+```{r}
 dn_lq_nc <- full_join(dn_nc, lq_nc, by = "state") 
-dn_lq_nc <- dn_lq_nc %>% mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+```
+
+Next, we use the haversine function to compute the distance from each dennys to laquintas. This is stored in dn_lq_nc
+```{r}
+dn_lq_nc <- dn_lq_nc %>%
+  mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+```
+
+We then summarize the dataset dn_lq_n by the minimum distance. This is done by grouping by LaQuinta address. 
+```{r}
 dn_lq_nc_mindist <- dn_lq_nc %>%
   group_by(address.y) %>%
   summarise(closest = min(distance_km))
@@ -56,22 +108,57 @@ dn_lq_nc_mindist <- dn_lq_nc %>%
 ```
 
 
+## Incoporating haversine function for Dennys and LaQuintas 
+
+We repeat the same process for LaQuinta and Denny's with LaQuinta and McDonalds.
+
+First, we extract only the NC data and full join the mcdonalds(mc1) and north carolina LaQuinta (lq_nc)datasets to create the dataset mc1. 
 ```{r}
 mc1 <- mcdonalds_nc_random %>% filter(state == "NC")
+
 mc2 <- full_join(mc1, lq_nc, by = "state") 
-mc2 <- mc2 %>% mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+```
+
+We then use the haversine function to compute the distances between each LaQuinta and McDonalds. Once done, we refine it by creating a dataset mc_lq_nc_mindist to store the minimum distance each LaQuinta is away from a McDonalds. 
+```{r}
+mc2 <- mc2 %>% 
+  mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+
 mc_lq_nc_mindist <- mc2 %>%
   group_by(address.y) %>%
   summarise(closest = min(distance_km))
 ```
 
-
+## Combining Data
+Before combining, we mutate the dataset for easy identification. This is done by adding a column called comparision and giving it the value of either Denny's or McDonalds.
 ```{r}
 dn_lq_nc_mindist <-dn_lq_nc_mindist %>% mutate(comparision = "Dennys")
+
 mc_lq_nc_mindist <- mc_lq_nc_mindist %>% mutate(comparision = "McDonalds")
+```
+
+Then, we combine the data using rbind. 
+```{r}
 midist_all = rbind(dn_lq_nc_mindist,mc_lq_nc_mindist)
 ```
 
+## Analysis
+To analyze the closest proximity each fast food restauraunt to a specific LaQuinta restauraunt, we create a bar plot using the combinded data from the previous section. 
+
+On the x axis, it displays the minimum distance and the y axis shows each LaQuintas address. This is a stacked bar plot with the legend to the right. 
+
+There are 12 LaQuinta locations in NC. As we can see, 7 LaQuinta locations have a McDonalds closer and 5 LaQuinta locations have a Denny's closer. This observation is made by analyzing each restauraunts height on the bar plot corresponding to a specific location. For 1001 Aerial Center Pkwy, the McDonalds region is smaller, thus it is closer since the height refers to the distance. 
+
+We can conclude that for this specific sample, McDonalds is closer to LaQuinta then Denny's. That contradicts the initial question of whether LaQuinta means next to Denny's. Perhaps, it is better fitting to say LaQuinta means next to McDonalds or next to fast food restauraunts. To get a better perspective, the area which LaQuintas are built should be analyzed. 
+
+
 ```{r}
-midist_all %>% ggplot(aes(address.y, fill = comparision)) + geom_bar(aes(weight = closest))+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("La Quinta Address") + ylab("Minimum Distance (miles) to Closest Restauraunt") + ggtitle("Denny's and McDonalds Distance from La Quinta in NC") + guides(fill=guide_legend(title="Restauraunt"))  + scale_fill_manual(values=c("darkslateblue","deeppink2"))
+midist_all %>% 
+  ggplot(aes(address.y, fill = comparision)) + 
+  geom_bar(aes(weight = closest))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  xlab("La Quinta Address") + ylab("Minimum Distance (miles) to Closest Restauraunt") +
+  ggtitle("Denny's and McDonalds Distance from La Quinta in NC") +
+  guides(fill=guide_legend(title="Restauraunt"))  +
+  scale_fill_manual(values=c("darkslateblue","deeppink2"))
 ```
