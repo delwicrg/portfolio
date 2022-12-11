@@ -1,0 +1,210 @@
+---
+title: "Lab 04 - La Quinta is Spanish for next to Denny's, Pt. 2"
+author: "Rosalina Delwiche"
+date: "19 October 2022"
+output: html_document
+---
+
+The purpose of this analysis is to determine whether Mitch Herdbergs joke of whether LaQuinta means next to Deny's holds true. To do so, we consider several states and analyze the minimum distance from each location in the state.
+
+### Load packages and data
+
+```{r}
+library(tidyverse) 
+library(dsbox) 
+```
+
+### Read state data 
+```{r}
+states <- read_csv("data_raw/states.csv")
+```
+
+### Dennys in AK 
+Filtering the Denny’s dataframe for Alaska (AK) and saving the result as dn_ak
+
+```{r}
+dn_ak <- dennys %>% filter(state == "AK")
+nrow(dn_ak)
+```
+
+### LaQuinta in AK
+Filtering the La Quinta dataframe for Alaska (AK) and saving the result as lq_ak
+
+```{r}
+lq_ak <- laquinta %>% filter(state == "AK") 
+nrow(lq_ak)
+```
+
+### Pairings and Joining
+Next, we see how many pairings there are between all Denny’s and all La Quinta locations in Alaska, i.e. how many distances do we need to calculate between the locations of these establishments in Alaska?
+
+```{r}
+dn_lq_ak <- full_join(dn_ak, lq_ak, by = "state") 
+
+dn_lq_ak
+```
+There are 3 Denny's locations in Alaska and 2 LaQuinta locations in Alaska. dn_la_ak restructures the data to pair these locations. As we can see there are 6 rows with the variables with columns relating to the addresses when we perform the full join. The columns include the address, city, longitutude, latitude, and state, with two occurences per each since there is one for a dennys and one for a laquinta. 
+
+...
+
+### Haversine Function
+To calculate the distance between any two points on the earth, we use the Haversine distance formula. This formula takes into account the fact that the earth is not flat, but instead spherical.
+
+This function takes five arguments:
+* Longitude and latitude of the first location
+* Longitude and latitude of the second location
+* A parameter by which to round the responses
+
+```{r}
+haversine <- function(long1, lat1, long2, lat2, round = 3) {
+  # convert to radians
+  long1 = long1 * pi / 180
+  lat1  = lat1  * pi / 180
+  long2 = long2 * pi / 180
+  lat2  = lat2  * pi / 180
+  R = 6371 # Earth mean radius in km
+  a = sin((lat2 - lat1)/2)^2 + cos(lat1) * cos(lat2) * sin((long2 - long1)/2)^2
+  d = R * 2 * asin(sqrt(a))
+  return( round(d,round) ) # distance in km
+}
+```
+
+
+### Calculate the Distances
+We calculate the distances between all pairs of Denny’s and La Quinta locations and save this variable as distance. We save this variable in the dn_lq_ak data frame so that you can use it later.
+
+```{r}
+dn_lq_ak <- dn_lq_ak %>% mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+```
+
+
+### Minimum Distance
+We calculate the minimum distance between a Denny’s and La Quinta for each Denny’s location. To do so we group by Denny’s locations and calculate a new variable that stores the information for the minimum distance
+
+```{r}
+dn_lq_ak_mindist <- dn_lq_ak %>%
+  group_by(address.x) %>%
+  summarise(closest = min(distance_km))
+```
+
+
+### Distribution of the distances Denny’s and the nearest La Quinta locations in Alaska
+To describe the distribution of the distances Denny's and the nearest La Quinta location, we make a dsataset with the closest distances. 
+```{r}
+dn_lq_ak_mindist %>% ggplot(aes(x=address.x, y=closest)) +
+  geom_point() + 
+  ggtitle("Closest Distances from Denny's and LaQuinta in Alaska")+ 
+  xlab("Address of Denny's")+
+  ylab("Closest Distance to LaQuinta (km)")
+```
+
+
+
+### North Carolina Denny's and LaQuinta
+We repeate the same analysis for North Carolina. We follow the following procedure- 
+
+(i) filter Denny’s and La Quinta Data Frames for NC 
+
+(ii) join these data frames to get a completelist of all possible pairings
+
+(iii) calculate the distances between all possible pairings of Denny’s and La Quinta in NC
+
+
+(iv) find the minimum distance between each Denny’s and La Quinta location
+
+(v) visualize and describe the distribution of these shortest distances using appropriate summary statistics.
+
+Below is steps i through iv 
+```{r}
+dn_nc <- dennys %>% filter(state == "NC")
+lq_nc <- laquinta %>% filter(state == "NC") 
+dn_lq_nc <- full_join(dn_nc, lq_nc, by = "state") 
+
+dn_lq_nc <- dn_lq_nc %>% mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+dn_lq_nc_mindist <- dn_lq_nc %>%
+  group_by(address.x) %>%
+  summarise(closest = min(distance_km))
+```
+
+Lastly we create the visualization for v. 
+```{r}
+dn_lq_nc_mindist %>% ggplot(aes(x=address.x, y=closest)) + geom_point()+ theme(axis.text.x = element_text(angle=90, hjust=1)) +  
+  ggtitle("Closest Distances from Denny's and LaQuinta in North Carolina")+ 
+  xlab("Address of Denny's")+
+  ylab("Closest Distance to LaQuinta (km)")
+
+```
+
+...
+
+### Texas Denny's and LaQuinta
+Once again, we repeat this same process for texas.
+```{r}
+dn_tx <- dennys %>% filter(state == "TX")
+lq_tx <- laquinta %>% filter(state == "TX") 
+dn_lq_tx <- full_join(dn_tx, lq_tx, by = "state") 
+
+dn_lq_tx <- dn_lq_tx %>%
+  mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+
+dn_lq_tx_mindist <- dn_lq_tx %>%
+  group_by(address.x) %>%
+  summarise(closest = min(distance_km))
+
+dn_lq_tx_mindist %>% ggplot(aes(x=address.x, y=closest)) + 
+  geom_point()+ 
+  theme(axis.text.x = element_text(angle=90, hjust=1)) +  
+  ggtitle("Closest Distances from Denny's and LaQuinta in Texas")+ 
+  xlab("Address of Denny's")+
+  ylab("Closest Distance to LaQuinta (km)")
+```
+
+...
+
+### Maryland Denny's and LaQuinta
+We repeat this proccess once again for another state, following the same steps. The state chosen is Maryland. 
+```{r}
+dn_md <- dennys %>% filter(state == "MD")
+
+lq_md <- laquinta %>% filter(state == "MD") 
+
+dn_lq_md <- full_join(dn_md, lq_md, by = "state") 
+
+dn_lq_md <- dn_lq_md %>% mutate(distance_km = haversine(longitude.x, latitude.x, longitude.y, latitude.y))
+
+dn_lq_md_mindist <- dn_lq_md %>%
+  group_by(address.x) %>%
+  summarise(closest = min(distance_km))
+
+dn_lq_md_mindist %>% ggplot(aes(x=address.x, y=closest)) +
+  geom_point()+
+  theme(axis.text.x = element_text(angle=90, hjust=1)) +  
+  ggtitle("Closest Distances from Denny's and LaQuinta in Maryland")+ 
+  xlab("Address of Denny's")+
+  ylab("Closest Distance to LaQuinta (km)")
+
+dn_lq_md_mindist %>% filter(closest <= 1)
+```
+
+...
+
+### Conclusion
+Out of the four states we analyzed - Alaska, North Carolina, Texas, and Maryland the Mitch Hedbergs joke does not apply. In these states it is not uncommon for there to be a LaQuinta's well over 5 km from Denny's. The answer to the question is dependent on how we define "close to". 
+
+To conclude, we take the median minimum distance from Denny's to LaQuinta per each state analyzed. As we can see the ranking of median closeness from lowest to highest is texas at 3.3715, alaska at 5.197, maryland at 12.5715, and north carolina at 53.45 kiometers. Typically a person takes 10-12 minutes to walk one kilometer. If closeness is being considered with feasible walking distances and shortness of time, the median time to get to a LaQuinta from a Denny's is at least 33.7 minutes. The time increases with other states. 
+
+```{r}
+dn_lq_ak_median <- median(dn_lq_ak_mindist$closest)
+dn_lq_tx_median <- median(dn_lq_tx_mindist$closest)
+dn_lq_nc_median <- median(dn_lq_nc_mindist$closest)
+dn_lq_nc_median <- median(dn_lq_md_mindist$closest)
+
+dn_lq_ak_median 
+dn_lq_tx_median
+dn_lq_nc_median
+dn_lq_nc_median
+```
+
+Perhaps closeness is dependent on individuals. Maybe for Mitch this is considered close. 
+
+
